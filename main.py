@@ -130,7 +130,7 @@ if poligono_subido:
 
     centroid_x,centroid_y = poligono_analise.centroid.x,poligono_analise.centroid.y
 
-    m = folium.Map(location=[centroid_y,centroid_x],zoom_start=8,tiles='Esri World Imagery')
+    m = folium.Map(location=[-15,-54],zoom_start=8,tiles='Esri World Imagery')
 
     ImageOverlay(
     image=resized_image,
