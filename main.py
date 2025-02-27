@@ -67,7 +67,7 @@ if poligono_subido:
     epsg_arquivo = calcular_utm(poligono_analise)
 
     area_desmat = entrada_desmat.dissolve(by=None)
-    entrada_desmat.set_crs("EPSG:4326")
+
     area_desmat = area_desmat.to_crs(epsg=epsg_arquivo)
 
     area_embargos = entrada_embargo.dissolve(by=None)
