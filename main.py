@@ -22,7 +22,7 @@ poligono_subido = st.sidebar.file_uploader('Escolha o polígono a ser analisado'
 raster_subido = st.sidebar.file_uploader('Escolha o raster a ser analisado (Mapbiomas)')
 
 embargos = 'dados/embargos/embargos_ibama.parquet'
-desmatamentos = 'dados/mapbiomas/dashboard_alerts-shapefile/mapbiomas_alertas1.parquet'
+desmatamentos = 'dados/mapbiomas/dashboard_alerts-shapefile/mapbiomas_alertas.parquet'
 tis = 'dados/tis_poligonais/tis.parquet'
 
 if poligono_subido:
