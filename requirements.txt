@@ -8,3 +8,4 @@ python-dotenv==1.1.1
 rasterio==1.4.3
 streamlit==1.42.2
 streamlit_folium==0.24.0
+sqlalchemy==2.0.42
