@@ -11,6 +11,18 @@ import pandas as pd
 import plotly.express as px
 from zona_utm import calcular_utm
 from utils import color_map,value_to_class
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+user = os.getenv('F2W_USER')
+host = os.getenv('F2W_HOST')
+password = os.getenv('F2W_PASSWORD')
+dbname = os.getenv('F2W_DBNAME')
+port = os.getenv('F2W_PORT')
+
+conn_str = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 st.header('Estudo de caso WebGIS')
 st.write('')
@@ -21,27 +33,41 @@ poligono_subido = st.sidebar.file_uploader('Escolha o polígono a ser analisado'
 
 raster_subido = st.sidebar.file_uploader('Escolha o raster a ser analisado (Mapbiomas)')
 
-embargos = 'dados/embargos/embargos_ibama.parquet'
-desmatamentos = 'dados/mapbiomas/dashboard_alerts-shapefile/mapbiomas_alertas.parquet'
-tis = 'dados/tis_poligonais/tis.parquet'
+#embargos = 'dados/embargos/embargos_ibama.parquet'
+#desmatamentos = 'dados/mapbiomas/dashboard_alerts-shapefile/mapbiomas_alertas.parquet'
+#tis = 'dados/tis_poligonais/tis.parquet'
 
 if poligono_subido:
     poligono_analise = gpd.read_file(poligono_subido)
+    xmin, ymin, xmax, ymax = poligono_analise.total_bounds
+
+    sql_embargos = f"select * from public.embargos_ibama ei where ei.geom && st_makeenvelope({xmin}, {ymin}, {xmax},{ymax},4674);"
+
+    gdf_embargo_banco = gpd.read_postgis(sql_embargos, conn_str, geom_col='geom')
+
+    sql_tis = f"select * from public.tis where geom && st_makeenvelope({xmin}, {ymin}, {xmax},{ymax},4674);"
+
+    gdf_tis_banco = gpd.read_postgis(sql_tis, conn_str, geom_col='geom')
+
+    sql_prode = f"select * from public.prodes where geom && st_makeenvelope({xmin}, {ymin}, {xmax},{ymax},4674);"
+
+    gdf_prodes_banco = gpd.read_postgis(sql_prode, conn_str, geom_col='geom')
+
 
     @st.cache_resource
     def abrir_embargo():
-        gdf_embargo = gpd.read_parquet(embargos)
-        return gdf_embargo
+        gdf_embargo_func = gdf_embargo_banco
+        return gdf_embargo_func
 
     @st.cache_resource
     def abrir_desmatamento():
-        gdf_desmat = gpd.read_parquet(desmatamentos)
-        return gdf_desmat
+        gdf_desmat_func = gdf_prodes_banco
+        return gdf_desmat_func
 
     @st.cache_resource
     def abrir_tis():
-        gdf_ti = gpd.read_parquet(tis)
-        return gdf_ti
+        gdf_ti_func = gdf_tis_banco
+        return gdf_ti_func
     
     gdf_embargo = abrir_embargo()
 
@@ -55,28 +81,43 @@ if poligono_subido:
                             'data_tad','dat_altera','data_cadas',
                             'data_geom','dt_carga'])
 
-    entrada_embargo = gpd.sjoin(gdf_embargo,poligono_analise,how='inner',predicate='intersects')
-    entrada_embargo = gpd.overlay(entrada_embargo,poligono_analise,how='intersection')
+    if not gdf_embargo.empty:
+        entrada_embargo = gpd.sjoin(gdf_embargo,poligono_analise,how='inner',predicate='intersects')
+        entrada_embargo = gpd.overlay(entrada_embargo,poligono_analise,how='intersection')
+    else:
+        entrada_embargo = gpd.GeoDataFrame(columns=['geom'],geometry='geom',crs=gdf_embargo.crs)
 
-    entrada_desmat = gpd.sjoin(gdf_desmat,poligono_analise,how='inner',predicate='intersects')
-    entrada_desmat = gpd.overlay(entrada_desmat,poligono_analise,how='intersection')
+    if not gdf_embargo.empty:
+        entrada_desmat = gpd.sjoin(gdf_desmat,poligono_analise,how='inner',predicate='intersects')
+        entrada_desmat = gpd.overlay(entrada_desmat,poligono_analise,how='intersection')
+    else:
+        entrada_desmat= gpd.GeoDataFrame(columns=['geom'],geometry='geom',crs=gdf_desmat.crs)
 
-    entrada_tis = gpd.sjoin(gdf_ti,poligono_analise,how='inner',predicate='intersects')
-    entrada_tis = gpd.overlay(entrada_tis,poligono_analise,how='intersection')
+    if not gdf_ti.empty:    
+        entrada_tis = gpd.sjoin(gdf_ti,poligono_analise,how='inner',predicate='intersects')
+        entrada_tis = gpd.overlay(entrada_tis,poligono_analise,how='intersection')
+    else:
+        entrada_tis = gpd.GeoDataFrame(columns=['geom'],geometry='geom',crs=gdf_ti.crs)
 
     epsg_arquivo = calcular_utm(poligono_analise)
 
-    area_desmat = entrada_desmat.dissolve(by=None)
+    if not entrada_desmat.empty:
+        area_desmat = entrada_desmat.dissolve(by=None)
+        area_desmat = area_desmat.to_crs(epsg=epsg_arquivo)
+    else:
+        area_desmat = gpd.GeoDataFrame(geometry=[],crs=entrada_desmat.crs)
 
-    area_desmat = area_desmat.to_crs(epsg=epsg_arquivo)
+    if not entrada_embargo.empty:
+        area_embargos = entrada_embargo.dissolve(by=None)
+        area_embargos = area_embargos.to_crs(epsg=epsg_arquivo)
+    else:
+        area_embargos = gpd.GeoDataFrame(geometry=[],crs=entrada_embargo.crs)
 
-    area_embargos = entrada_embargo.dissolve(by=None)
-
-    area_embargos = area_embargos.to_crs(epsg=epsg_arquivo)
-
-    area_tis = entrada_tis.dissolve(by=None)
-
-    area_tis = area_tis.to_crs(epsg=epsg_arquivo)
+    if not entrada_tis.empty:
+        area_tis = entrada_tis.dissolve(by=None)
+        area_tis = area_tis.to_crs(epsg=epsg_arquivo)
+    else:
+        area_tis = gpd.GeoDataFrame(geometry=[],crs=entrada_tis.crs)
 
     with MemoryFile(raster_subido.getvalue()) as memfile:
         with memfile.open() as src:
@@ -155,8 +196,9 @@ if poligono_subido:
         'fillOpacity':0.6
     }
 
-    entrada_desmat_geom = gpd.GeoDataFrame(entrada_desmat,columns=['geometry'])
-    folium.GeoJson(entrada_desmat_geom,name='Área desmatada',style_function=style_function_desmat).add_to(m)
+    if not entrada_desmat.empty:
+        entrada_desmat_geom = gpd.GeoDataFrame(entrada_desmat,columns=['geom'])
+        folium.GeoJson(entrada_desmat_geom,name='Área desmatada',style_function=style_function_desmat).add_to(m)
 
     def style_function_embargo(x): return{
         'fillColor':'orange',
@@ -165,8 +207,9 @@ if poligono_subido:
         'fillOpacity':0.6
     }
 
-    entrada_embargo_geom = gpd.GeoDataFrame(entrada_embargo,columns=['geometry'])
-    folium.GeoJson(entrada_embargo_geom,name='Área embargada',style_function=style_function_embargo).add_to(m)
+    if not entrada_embargo.empty:
+        entrada_embargo_geom = gpd.GeoDataFrame(entrada_embargo,columns=['geom'])
+        folium.GeoJson(entrada_embargo_geom,name='Área embargada',style_function=style_function_embargo).add_to(m)
 
 
     def style_function_ti(x): return{
@@ -176,8 +219,9 @@ if poligono_subido:
         'fillOpacity':0.6
     }
 
-    entrada_ti_geom = gpd.GeoDataFrame(entrada_tis,columns=['geometry'])
-    folium.GeoJson(entrada_ti_geom,name='Área de TIs',style_function=style_function_ti).add_to(m)
+    if not entrada_tis.empty:
+        entrada_ti_geom = gpd.GeoDataFrame(entrada_tis,columns=['geom'])
+        folium.GeoJson(entrada_ti_geom,name='Área de TIs',style_function=style_function_ti).add_to(m)
 
     folium.LayerControl().add_to(m)
 
@@ -191,11 +235,11 @@ if poligono_subido:
         st.write(f"{class_name},{area_ha} (ha)")
 
 
-    df_desmat = pd.DataFrame(entrada_desmat).drop(columns=['geometry'])
+    df_desmat = pd.DataFrame(entrada_desmat).drop(columns=['geom'],errors='ignore') if not entrada_desmat.empty else pd.DataFrame()
 
-    df_embargo = pd.DataFrame(entrada_embargo).drop(columns=['geometry'])
+    df_embargo = pd.DataFrame(entrada_embargo).drop(columns=['geom'],errors='ignore') if not entrada_embargo.empty else pd.DataFrame()
 
-    df_ti = pd.DataFrame(entrada_tis).drop(columns=['geometry'])
+    df_ti = pd.DataFrame(entrada_tis).drop(columns=['geom'],errors='ignore') if not entrada_tis.empty else pd.DataFrame()
 
     col1_graf,col2_graf,col3_graf,col4_graf = st.columns(4)
 
